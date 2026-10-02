@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Reacr",
+    "slug": "reacr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-status-bar"
+    ]
+  }
+}

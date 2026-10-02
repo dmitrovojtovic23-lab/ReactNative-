@@ -1,0 +1,55 @@
+# ---------- React Native / Expo ----------
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+package-lock.json
+
+# Expo / Metro
+.metro-health-check*
+.expo/web/cache/
+
+# macOS / Windows / Linux
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Android / iOS builds
+android/app/build/
+android/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+*.apk
+*.aab
+*.ipa
+
+# ---------- .NET ----------
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+publish/
+*.nupkg
+
+# Secrets / local settings
+appsettings.*.local.json
+secrets.json
+
+# Uploaded images (optional — remove if you want to keep them in git)
+# wwwroot/images/
