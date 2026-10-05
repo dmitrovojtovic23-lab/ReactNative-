@@ -13,8 +13,25 @@ import {
     SafeAreaView,
     ScrollView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+
+const showAlert = (title, message, buttons) => {
+    if (Platform.OS !== 'web') {
+        Alert.alert(title, message, buttons);
+        return;
+    }
+    const text = message ? `${title}\n\n${message}` : title;
+    if (buttons && buttons.length > 1) {
+        if (window.confirm(text)) {
+            const action = buttons.find((b) => b.style !== 'cancel');
+            if (action && action.onPress) {
+                action.onPress();
+            }
+        }
+        return;
+    }
+    window.alert(text);
+};
 
 const API_URL = 'https://webpd411.itstep.click/account/register';
 const LEGACY_API_URL = 'https://webpd411.itstep.click/api/account/register';
@@ -57,7 +74,7 @@ function getServerErrorMessage(data, responseText, status) {
     return [...new Set(messages)].join('\n') || `Помилка сервера (код ${status})`;
 }
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen({ navigation, onLogin }) {
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
@@ -69,7 +86,7 @@ export default function RegisterScreen({ navigation }) {
     const pickImage = async () => {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-            Alert.alert('Помилка', 'Потрібен дозвіл на доступ до галереї');
+            showAlert('Помилка', 'Потрібен дозвіл на доступ до галереї');
             return;
         }
 
@@ -85,15 +102,15 @@ export default function RegisterScreen({ navigation }) {
 
     const handleRegister = async () => {
         if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword || !image) {
-            Alert.alert('Помилка', 'Заповніть усі поля та виберіть фото');
+            showAlert('Помилка', 'Заповніть усі поля та виберіть фото');
             return;
         }
         if (password.length < 6) {
-            Alert.alert('Помилка', 'Пароль має містити щонайменше 6 символів');
+            showAlert('Помилка', 'Пароль має містити щонайменше 6 символів');
             return;
         }
         if (password !== confirmPassword) {
-            Alert.alert('Помилка', 'Паролі не співпадають');
+            showAlert('Помилка', 'Паролі не співпадають');
             return;
         }
 
@@ -106,11 +123,17 @@ export default function RegisterScreen({ navigation }) {
             formData.append('Email', email.trim());
             formData.append('Password', password);
             formData.append('ConfirmPassword', confirmPassword);
-            formData.append('Image', {
-                uri: image.uri,
-                name: image.fileName || 'photo.jpg',
-                type: image.mimeType || 'image/jpeg',
-            });
+            const imageName = image.fileName || 'photo.jpg';
+            if (Platform.OS === 'web') {
+                const imageBlob = await (await fetch(image.uri)).blob();
+                formData.append('Image', imageBlob, imageName);
+            } else {
+                formData.append('Image', {
+                    uri: image.uri,
+                    name: imageName,
+                    type: image.mimeType || 'image/jpeg',
+                });
+            }
 
             const requestOptions = {
                 method: 'POST',
@@ -135,25 +158,15 @@ export default function RegisterScreen({ navigation }) {
             }
 
             if (response.ok && data && data.token) {
-                await AsyncStorage.setItem('userToken', data.token);
-                Alert.alert('Успіх', 'Реєстрація виконана успішно!', [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            if (navigation && typeof navigation.navigate === 'function') {
-                                navigation.navigate('Login');
-                            }
-                        },
-                    },
-                ]);
+                await onLogin(data.token);
             } else {
                 const errorMessage = response.ok
                     ? 'Сервер не повернув токен авторизації'
                     : getServerErrorMessage(data, responseText, response.status);
-                Alert.alert('Помилка реєстрації', errorMessage);
+                showAlert('Помилка реєстрації', errorMessage);
             }
         } catch (error) {
-            Alert.alert('Помилка мережі', "Не вдалося з'єднатися із сервером. Перевірте підключення до інтернету.");
+            showAlert('Помилка мережі', "Не вдалося з'єднатися із сервером. Перевірте підключення до інтернету.");
         } finally {
             setLoading(false);
         }

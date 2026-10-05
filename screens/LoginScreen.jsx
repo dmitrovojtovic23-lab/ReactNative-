@@ -11,19 +11,36 @@ import {
     Platform,
     SafeAreaView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const showAlert = (title, message, buttons) => {
+    if (Platform.OS !== 'web') {
+        Alert.alert(title, message, buttons);
+        return;
+    }
+    const text = message ? `${title}\n\n${message}` : title;
+    if (buttons && buttons.length > 1) {
+        if (window.confirm(text)) {
+            const action = buttons.find((b) => b.style !== 'cancel');
+            if (action && action.onPress) {
+                action.onPress();
+            }
+        }
+        return;
+    }
+    window.alert(text);
+};
 
 const API_URL = 'https://webpd411.itstep.click/account/login';
 const LEGACY_API_URL = 'https://webpd411.itstep.click/api/account/login';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen({ navigation, onLogin }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleLogin = async () => {
         if (!email.trim() || !password.trim()) {
-            Alert.alert('Помилка', 'Будь ласка, заповніть усі поля');
+            showAlert('Помилка', 'Будь ласка, заповніть усі поля');
             return;
         }
 
@@ -56,15 +73,14 @@ export default function LoginScreen({ navigation }) {
             }
 
             if (response.ok && data && data.token) {
-                await AsyncStorage.setItem('userToken', data.token);
-                navigation.replace('Profile');
+                await onLogin(data.token);
             } else {
                 const errorMessage =
                     (data && (data.message || data.title)) || 'Невірний email або пароль';
-                Alert.alert('Помилка входу', errorMessage);
+                showAlert('Помилка входу', errorMessage);
             }
         } catch (error) {
-            Alert.alert('Помилка мережі', 'Не вдалося зєднатися із сервером');
+            showAlert('Помилка мережі', 'Не вдалося зєднатися із сервером');
         } finally {
             setLoading(false);
         }

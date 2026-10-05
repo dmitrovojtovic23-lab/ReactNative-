@@ -7,17 +7,35 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Alert,
+    Platform,
     SafeAreaView,
     ScrollView,
     RefreshControl,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const showAlert = (title, message, buttons) => {
+    if (Platform.OS !== 'web') {
+        Alert.alert(title, message, buttons);
+        return;
+    }
+    const text = message ? `${title}\n\n${message}` : title;
+    if (buttons && buttons.length > 1) {
+        if (window.confirm(text)) {
+            const action = buttons.find((b) => b.style !== 'cancel');
+            if (action && action.onPress) {
+                action.onPress();
+            }
+        }
+        return;
+    }
+    window.alert(text);
+};
 
 const BASE_URL = 'https://webpd411.itstep.click';
 const PROFILE_URL = `${BASE_URL}/account/profile`;
 const LEGACY_PROFILE_URL = `${BASE_URL}/api/account/profile`;
 
-export default function ProfileScreen({ navigation }) {
+export default function ProfileScreen({ token, onLogout }) {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -30,14 +48,6 @@ export default function ProfileScreen({ navigation }) {
         }
 
         try {
-            const token = await AsyncStorage.getItem('userToken');
-
-            if (!token) {
-                Alert.alert('Помилка', 'Ви не авторизовані. Увійдіть у систему.');
-                navigation.replace('Login');
-                return;
-            }
-
             const requestOptions = {
                 method: 'GET',
                 headers: {
@@ -52,9 +62,8 @@ export default function ProfileScreen({ navigation }) {
             }
 
             if (response.status === 401) {
-                await AsyncStorage.removeItem('userToken');
-                Alert.alert('Сесія завершена', 'Будь ласка, увійдіть знову.');
-                navigation.replace('Login');
+                await onLogout();
+                showAlert('Сесія завершена', 'Будь ласка, увійдіть знову.');
                 return;
             }
 
@@ -69,23 +78,25 @@ export default function ProfileScreen({ navigation }) {
             if (response.ok && data) {
                 setProfile(data);
             } else {
-                Alert.alert('Помилка', (data && (data.title || data.message)) || 'Не вдалося завантажити профіль');
+                showAlert('Помилка', (data && (data.title || data.message)) || 'Не вдалося завантажити профіль');
             }
         } catch (error) {
-            Alert.alert('Помилка мережі', 'Не вдалося зєднатися із сервером');
+            showAlert('Помилка мережі', 'Не вдалося зєднатися із сервером');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [navigation]);
+    }, [token, onLogout]);
 
     useEffect(() => {
         loadProfile();
     }, [loadProfile]);
 
-    const handleLogout = async () => {
-        await AsyncStorage.removeItem('userToken');
-        navigation.replace('Login');
+    const handleLogout = () => {
+        showAlert('Вихід', 'Ви впевнені, що хочете вийти з акаунта?', [
+            { text: 'Скасувати', style: 'cancel' },
+            { text: 'Вийти', style: 'destructive', onPress: () => onLogout() },
+        ]);
     };
 
     const getImageUrl = () => {
