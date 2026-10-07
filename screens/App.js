@@ -67,10 +67,7 @@ export default function App() {
       <NavigationContainer>
         <Stack.Navigator>
           {token ? (
-              <Stack.Screen
-                  name="Profile"
-                  options={{ title: "Профіль", headerTitleAlign: "center" }}
-              >
+              <Stack.Screen name="Profile" options={{ headerShown: false }}>
                 {(props) => <ProfileScreen {...props} token={token} onLogout={signOut} />}
               </Stack.Screen>
           ) : (
