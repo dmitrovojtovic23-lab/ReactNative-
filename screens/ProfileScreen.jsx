@@ -11,6 +11,9 @@ import {
     Platform,
     FlatList,
     RefreshControl,
+    ScrollView,
+    Modal,
+    KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -51,19 +54,38 @@ const FILTERS = [
 
 const getPriority = (key) => PRIORITIES.find((p) => p.key === key) || PRIORITIES[1];
 
-const createTask = (title, priority) => ({
+const EMOJIS = ['✨', '🔥', '💪', '🎯', '📚', '🏃', '🛒', '💡', '🎨', '🎧', '🧘', '🍕'];
+
+const createTask = (title, priority, emoji = '✨') => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     title,
     priority,
+    emoji,
     done: false,
     createdAt: Date.now(),
 });
 
 const starterTasks = () => [
-    { ...createTask('Ознайомитися з додатком', 'low'), done: true },
-    createTask('Додати свою першу задачу', 'medium'),
-    createTask('Позначити задачу виконаною', 'high'),
+    { ...createTask('Ознайомитися з додатком', 'low', '🎈'), done: true },
+    createTask('Додати свою першу задачу', 'medium', '🎯'),
+    createTask('Змінити задачу кнопкою ✎', 'high', '💡'),
 ];
+
+const getCheer = (total, percent) => {
+    if (total === 0) {
+        return 'Додайте першу задачу і вперед! 🚀';
+    }
+    if (percent === 100) {
+        return 'Ураа! Усе виконано, ви супер! 🎉';
+    }
+    if (percent >= 50) {
+        return 'Більше половини вже позаду! 💪';
+    }
+    if (percent > 0) {
+        return 'Чудовий початок, так тримати! 🌟';
+    }
+    return 'Кожен великий шлях починається з маленького кроку 🌈';
+};
 
 const formatDate = (timestamp) =>
     new Date(timestamp).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
@@ -77,6 +99,11 @@ export default function ProfileScreen({ token, onLogout }) {
     const [filter, setFilter] = useState('all');
     const [title, setTitle] = useState('');
     const [priority, setPriority] = useState('medium');
+    const [emoji, setEmoji] = useState('✨');
+    const [editing, setEditing] = useState(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editPriority, setEditPriority] = useState('medium');
+    const [editEmoji, setEditEmoji] = useState('✨');
 
     const loadProfile = useCallback(async (isRefresh = false) => {
         if (isRefresh) {
@@ -177,8 +204,41 @@ export default function ProfileScreen({ token, onLogout }) {
             showAlert('Порожня задача', 'Введіть назву задачі.');
             return;
         }
-        setTasks((prev) => [createTask(trimmed, priority), ...prev]);
+        setTasks((prev) => [createTask(trimmed, priority, emoji), ...prev]);
         setTitle('');
+    };
+
+    const openEdit = (task) => {
+        setEditing(task);
+        setEditTitle(task.title);
+        setEditPriority(task.priority);
+        setEditEmoji(task.emoji || '✨');
+    };
+
+    const closeEdit = () => {
+        setEditing(null);
+    };
+
+    const saveEdit = () => {
+        const trimmed = editTitle.trim();
+        if (!trimmed) {
+            showAlert('Порожня задача', 'Назва задачі не може бути порожньою.');
+            return;
+        }
+        setTasks((prev) =>
+            prev.map((t) =>
+                t.id === editing.id
+                    ? { ...t, title: trimmed, priority: editPriority, emoji: editEmoji }
+                    : t
+            )
+        );
+        setEditing(null);
+    };
+
+    const deleteFromEdit = () => {
+        const id = editing.id;
+        setEditing(null);
+        removeTask(id);
     };
 
     const toggleTask = (id) => {
@@ -209,6 +269,7 @@ export default function ProfileScreen({ token, onLogout }) {
     }, [tasks, filter]);
 
     const counts = { all: total, active: activeCount, done: doneCount };
+    const cheer = getCheer(total, percent);
 
     const getImageUrl = () => {
         const image =
@@ -228,6 +289,55 @@ export default function ProfileScreen({ token, onLogout }) {
         .join(' ') || profile?.name || 'Користувач';
     const firstName = profile?.firstName || fullName;
 
+    const renderPriorityRow = (selectedKey, onSelect) => (
+        <View style={styles.priorityRow}>
+            {PRIORITIES.map((p) => {
+                const selected = selectedKey === p.key;
+                return (
+                    <TouchableOpacity
+                        key={p.key}
+                        onPress={() => onSelect(p.key)}
+                        activeOpacity={0.8}
+                        style={[
+                            styles.priorityChip,
+                            selected && { backgroundColor: p.color, borderColor: p.color },
+                        ]}
+                    >
+                        <View
+                            style={[
+                                styles.priorityDot,
+                                { backgroundColor: selected ? '#FFFFFF' : p.color },
+                            ]}
+                        />
+                        <Text style={[styles.priorityChipText, selected && styles.priorityChipTextActive]}>
+                            {p.label}
+                        </Text>
+                    </TouchableOpacity>
+                );
+            })}
+        </View>
+    );
+
+    const renderEmojiRow = (selectedEmoji, onSelect) => (
+        <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.emojiRow}
+        >
+            {EMOJIS.map((e) => (
+                <TouchableOpacity
+                    key={e}
+                    onPress={() => onSelect(e)}
+                    activeOpacity={0.8}
+                    style={[styles.emojiChip, selectedEmoji === e && styles.emojiChipActive]}
+                >
+                    <Text style={styles.emojiText}>{e}</Text>
+                </TouchableOpacity>
+            ))}
+        </ScrollView>
+    );
+
     const listHeader = (
         <View>
             <View style={styles.addCard}>
@@ -246,32 +356,8 @@ export default function ProfileScreen({ token, onLogout }) {
                         <Text style={styles.addButtonText}>+</Text>
                     </TouchableOpacity>
                 </View>
-                <View style={styles.priorityRow}>
-                    {PRIORITIES.map((p) => {
-                        const selected = priority === p.key;
-                        return (
-                            <TouchableOpacity
-                                key={p.key}
-                                onPress={() => setPriority(p.key)}
-                                activeOpacity={0.8}
-                                style={[
-                                    styles.priorityChip,
-                                    selected && { backgroundColor: p.color, borderColor: p.color },
-                                ]}
-                            >
-                                <View
-                                    style={[
-                                        styles.priorityDot,
-                                        { backgroundColor: selected ? '#FFFFFF' : p.color },
-                                    ]}
-                                />
-                                <Text style={[styles.priorityChipText, selected && styles.priorityChipTextActive]}>
-                                    {p.label}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
+                {renderPriorityRow(priority, setPriority)}
+                {renderEmojiRow(emoji, setEmoji)}
             </View>
 
             <View style={styles.filterRow}>
@@ -311,6 +397,9 @@ export default function ProfileScreen({ token, onLogout }) {
                 <View style={[styles.checkbox, item.done && styles.checkboxDone]}>
                     {item.done && <Text style={styles.checkmark}>✓</Text>}
                 </View>
+                <View style={[styles.emojiBubble, { backgroundColor: `${p.color}22` }]}>
+                    <Text style={styles.emojiBubbleText}>{item.emoji || '✨'}</Text>
+                </View>
                 <View style={styles.taskBody}>
                     <Text style={[styles.taskTitle, item.done && styles.taskTitleDone]} numberOfLines={3}>
                         {item.title}
@@ -322,6 +411,14 @@ export default function ProfileScreen({ token, onLogout }) {
                         <Text style={styles.metaDate}>{formatDate(item.createdAt)}</Text>
                     </View>
                 </View>
+                <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => openEdit(item)}
+                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                    activeOpacity={0.7}
+                >
+                    <Text style={styles.editText}>✎</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={() => removeTask(item.id)}
@@ -383,6 +480,7 @@ export default function ProfileScreen({ token, onLogout }) {
                             <View style={styles.progressTrack}>
                                 <View style={[styles.progressFill, { width: `${percent}%` }]} />
                             </View>
+                            <Text style={styles.cheerText}>{cheer}</Text>
                             <Text style={styles.progressSub}>
                                 Виконано {doneCount} із {total} · Залишилось {activeCount}
                             </Text>
@@ -422,6 +520,52 @@ export default function ProfileScreen({ token, onLogout }) {
                     }
                 />
             )}
+
+            <Modal
+                visible={editing !== null}
+                transparent
+                animationType="fade"
+                onRequestClose={closeEdit}
+            >
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Змінити задачу ✏️</Text>
+
+                        <Text style={styles.modalLabel}>Назва</Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            value={editTitle}
+                            onChangeText={setEditTitle}
+                            placeholder="Назва задачі"
+                            placeholderTextColor="#9CA3AF"
+                            maxLength={120}
+                            multiline
+                        />
+
+                        <Text style={styles.modalLabel}>Пріоритет</Text>
+                        {renderPriorityRow(editPriority, setEditPriority)}
+
+                        <Text style={styles.modalLabel}>Настрій задачі</Text>
+                        {renderEmojiRow(editEmoji, setEditEmoji)}
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity style={styles.modalCancel} onPress={closeEdit} activeOpacity={0.8}>
+                                <Text style={styles.modalCancelText}>Скасувати</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.modalSave} onPress={saveEdit} activeOpacity={0.8}>
+                                <Text style={styles.modalSaveText}>Зберегти 🎈</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity style={styles.modalDelete} onPress={deleteFromEdit} activeOpacity={0.8}>
+                            <Text style={styles.modalDeleteText}>Видалити задачу</Text>
+                        </TouchableOpacity>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
         </View>
     );
 }
@@ -527,8 +671,14 @@ const styles = StyleSheet.create({
         borderRadius: 5,
         backgroundColor: '#FDE68A',
     },
+    cheerText: {
+        marginTop: 12,
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFFFFF',
+    },
     progressSub: {
-        marginTop: 10,
+        marginTop: 4,
         fontSize: 12,
         color: '#E0E7FF',
     },
@@ -586,7 +736,30 @@ const styles = StyleSheet.create({
     },
     priorityRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         marginTop: 12,
+    },
+    emojiRow: {
+        paddingTop: 12,
+        paddingRight: 8,
+    },
+    emojiChip: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 8,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    emojiChipActive: {
+        backgroundColor: '#EEF2FF',
+        borderColor: '#4F46E5',
+    },
+    emojiText: {
+        fontSize: 22,
     },
     priorityChip: {
         flexDirection: 'row',
@@ -697,6 +870,17 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '800',
     },
+    emojiBubble: {
+        width: 38,
+        height: 38,
+        borderRadius: 13,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    emojiBubbleText: {
+        fontSize: 20,
+    },
     taskBody: {
         flex: 1,
     },
@@ -727,6 +911,20 @@ const styles = StyleSheet.create({
     metaDate: {
         fontSize: 12,
         color: '#9CA3AF',
+    },
+    editButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#E0E7FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    editText: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#4F46E5',
     },
     deleteButton: {
         width: 30,
@@ -760,6 +958,88 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#6B7280',
         textAlign: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(17, 24, 39, 0.55)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalCard: {
+        width: '100%',
+        maxWidth: 440,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 20,
+        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.25)',
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#1F2937',
+        marginBottom: 6,
+    },
+    modalLabel: {
+        marginTop: 14,
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#6B7280',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    modalInput: {
+        marginTop: 8,
+        minHeight: 48,
+        maxHeight: 110,
+        backgroundColor: '#F3F4F6',
+        borderRadius: 14,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        fontSize: 15,
+        color: '#111827',
+    },
+    modalActions: {
+        flexDirection: 'row',
+        marginTop: 22,
+    },
+    modalCancel: {
+        flex: 1,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    modalCancelText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#4B5563',
+    },
+    modalSave: {
+        flex: 1.4,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#4F46E5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalSaveText: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    modalDelete: {
+        marginTop: 12,
+        height: 42,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalDeleteText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#EF4444',
     },
     clearButton: {
         marginTop: 8,
