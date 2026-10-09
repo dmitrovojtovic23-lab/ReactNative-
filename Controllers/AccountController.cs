@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using WebApiDotNet.Data.Entities;
 using WebApiDotNet.Models.Account;
@@ -165,5 +166,29 @@ public class AccountController : ControllerBase
         };
 
         return Ok(response);
+    }
+
+    [HttpGet]
+    [HttpGet("/account/users")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Users()
+    {
+        var users = await _userManager.Users
+            .AsNoTracking()
+            .OrderBy(u => u.Id)
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Image })
+            .ToListAsync();
+
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+
+        var result = users.Select(u => new
+        {
+            u.Id,
+            u.FirstName,
+            u.LastName,
+            ImageUrl = string.IsNullOrWhiteSpace(u.Image) ? null : $"{baseUrl}/images/{u.Image}"
+        });
+
+        return Ok(result);
     }
 }

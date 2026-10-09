@@ -39,6 +39,9 @@ const showAlert = (title, message, buttons) => {
 
 const BASE_URL = 'https://webpd411.itstep.click';
 const PROFILE_URL = `${BASE_URL}/api/account/profile`;
+const USERS_URL = `${BASE_URL}/api/account/users`;
+
+const AVATAR_COLORS = ['#6366F1', '#EC4899', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#14B8A6'];
 
 const PRIORITIES = [
     { key: 'high', label: 'Високий', color: '#EF4444' },
@@ -104,6 +107,11 @@ export default function ProfileScreen({ token, onLogout }) {
     const [editTitle, setEditTitle] = useState('');
     const [editPriority, setEditPriority] = useState('medium');
     const [editEmoji, setEditEmoji] = useState('✨');
+    const [tab, setTab] = useState('tasks');
+    const [users, setUsers] = useState([]);
+    const [usersLoading, setUsersLoading] = useState(false);
+    const [usersRefreshing, setUsersRefreshing] = useState(false);
+    const [usersError, setUsersError] = useState('');
 
     const loadProfile = useCallback(async (isRefresh = false) => {
         if (isRefresh) {
@@ -153,6 +161,56 @@ export default function ProfileScreen({ token, onLogout }) {
     useEffect(() => {
         loadProfile();
     }, [loadProfile]);
+
+    const loadUsers = useCallback(async (isRefresh = false) => {
+        if (isRefresh) {
+            setUsersRefreshing(true);
+        } else {
+            setUsersLoading(true);
+        }
+        setUsersError('');
+
+        try {
+            const response = await fetch(USERS_URL, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.status === 401) {
+                await onLogout();
+                showAlert('Сесія завершена', 'Будь ласка, увійдіть знову.');
+                return;
+            }
+
+            const responseText = await response.text();
+            let data = null;
+            try {
+                data = responseText ? JSON.parse(responseText) : null;
+            } catch {
+                data = null;
+            }
+
+            if (response.ok && Array.isArray(data)) {
+                setUsers(data);
+            } else {
+                setUsersError((data && (data.title || data.message)) || 'Не вдалося завантажити список користувачів');
+            }
+        } catch (error) {
+            setUsersError('Не вдалося зєднатися із сервером');
+        } finally {
+            setUsersLoading(false);
+            setUsersRefreshing(false);
+        }
+    }, [token, onLogout]);
+
+    useEffect(() => {
+        if (tab === 'users') {
+            loadUsers();
+        }
+    }, [tab, loadUsers]);
 
     const userKey = profile ? `tasks:${profile.userId || profile.email || 'user'}` : null;
 
@@ -431,6 +489,63 @@ export default function ProfileScreen({ token, onLogout }) {
         );
     };
 
+    const getUserImage = (user) => {
+        const image = user?.imageUrl;
+        if (!image) return null;
+        if (image.startsWith('http')) return image;
+        if (image.startsWith('/')) return `${BASE_URL}${image}`;
+        return `${BASE_URL}/images/${image}`;
+    };
+
+    const renderUser = ({ item }) => {
+        const name = [item.firstName, item.lastName].filter(Boolean).join(' ') || 'Без імені';
+        const photo = getUserImage(item);
+        const color = AVATAR_COLORS[Math.abs(Number(item.id) || 0) % AVATAR_COLORS.length];
+        const isMe = profile && String(item.id) === String(profile.userId);
+        return (
+            <View style={[styles.userCard, isMe && styles.userCardMe]}>
+                {photo ? (
+                    <Image source={{ uri: photo }} style={styles.userAvatar} />
+                ) : (
+                    <View style={[styles.userAvatar, { backgroundColor: color, justifyContent: 'center', alignItems: 'center' }]}>
+                        <Text style={styles.userAvatarText}>{name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                )}
+                <View style={styles.userBody}>
+                    <Text style={styles.userName} numberOfLines={1}>{name}</Text>
+                    <Text style={styles.userId}>Користувач №{item.id}</Text>
+                </View>
+                {isMe && (
+                    <View style={styles.meBadge}>
+                        <Text style={styles.meBadgeText}>Це ви 🎈</Text>
+                    </View>
+                )}
+            </View>
+        );
+    };
+
+    const usersEmpty = usersLoading ? (
+        <View style={styles.emptyBox}>
+            <ActivityIndicator size="large" color="#4F46E5" />
+            <Text style={styles.loaderText}>Завантаження користувачів...</Text>
+        </View>
+    ) : usersError ? (
+        <View style={styles.emptyBox}>
+            <Text style={styles.emptyEmoji}>😕</Text>
+            <Text style={styles.emptyTitle}>Щось пішло не так</Text>
+            <Text style={styles.emptyText}>{usersError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => loadUsers()} activeOpacity={0.8}>
+                <Text style={styles.retryButtonText}>Спробувати ще раз</Text>
+            </TouchableOpacity>
+        </View>
+    ) : (
+        <View style={styles.emptyBox}>
+            <Text style={styles.emptyEmoji}>👥</Text>
+            <Text style={styles.emptyTitle}>Поки нікого немає</Text>
+            <Text style={styles.emptyText}>Тут зʼявляться зареєстровані користувачі.</Text>
+        </View>
+    );
+
     const emptyTitle = filter === 'done' ? 'Поки немає виконаних' : filter === 'active' ? 'Усе зроблено!' : 'Задач поки немає';
     const emptyText = filter === 'done'
         ? 'Позначте задачу виконаною, і вона зʼявиться тут.'
@@ -489,7 +604,47 @@ export default function ProfileScreen({ token, onLogout }) {
                 </SafeAreaView>
             </View>
 
-            {loading || !tasksReady ? (
+            <View style={styles.tabWrap}>
+                <View style={styles.tabBar}>
+                    <TouchableOpacity
+                        style={[styles.tabButton, tab === 'tasks' && styles.tabButtonActive]}
+                        onPress={() => setTab('tasks')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[styles.tabText, tab === 'tasks' && styles.tabTextActive]}>📝 Задачі</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.tabButton, tab === 'users' && styles.tabButtonActive]}
+                        onPress={() => setTab('users')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[styles.tabText, tab === 'users' && styles.tabTextActive]}>👥 Користувачі</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {tab === 'users' ? (
+                <FlatList
+                    data={users}
+                    keyExtractor={(item) => String(item.id)}
+                    renderItem={renderUser}
+                    ListHeaderComponent={
+                        users.length > 0 ? (
+                            <Text style={styles.usersCount}>Зареєстровано користувачів: {users.length} 🎉</Text>
+                        ) : null
+                    }
+                    ListEmptyComponent={usersEmpty}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={usersRefreshing}
+                            onRefresh={() => loadUsers(true)}
+                            colors={['#4F46E5']}
+                        />
+                    }
+                />
+            ) : loading || !tasksReady ? (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="large" color="#4F46E5" />
                     <Text style={styles.loaderText}>Завантаження задач...</Text>
@@ -958,6 +1113,109 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#6B7280',
         textAlign: 'center',
+    },
+    tabWrap: {
+        width: '100%',
+        maxWidth: 600,
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 16,
+    },
+    tabBar: {
+        flexDirection: 'row',
+        backgroundColor: '#E5E7EB',
+        borderRadius: 16,
+        padding: 4,
+    },
+    tabButton: {
+        flex: 1,
+        height: 42,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    tabButtonActive: {
+        backgroundColor: '#FFFFFF',
+        boxShadow: '0 2px 8px rgba(17, 24, 39, 0.12)',
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#6B7280',
+    },
+    tabTextActive: {
+        color: '#4F46E5',
+    },
+    usersCount: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#4B5563',
+        marginBottom: 14,
+    },
+    userCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 18,
+        padding: 14,
+        marginBottom: 10,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        boxShadow: '0 3px 10px rgba(17, 24, 39, 0.06)',
+    },
+    userCardMe: {
+        borderColor: '#C7D2FE',
+        backgroundColor: '#F5F7FF',
+    },
+    userAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+    },
+    userAvatarText: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    userBody: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    userName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#111827',
+    },
+    userId: {
+        marginTop: 2,
+        fontSize: 12,
+        color: '#9CA3AF',
+    },
+    meBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        backgroundColor: '#E0E7FF',
+        marginLeft: 8,
+    },
+    meBadgeText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#4F46E5',
+    },
+    retryButton: {
+        marginTop: 16,
+        paddingHorizontal: 20,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: '#4F46E5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    retryButtonText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
     modalOverlay: {
         flex: 1,
